@@ -1,4 +1,5 @@
 version: '3.8'
+
 services:
   frontend:
     build:
@@ -20,11 +21,15 @@ services:
     depends_on:
       - postgres
       - redis
-    env_file: ./backend/.env.example
+    env_file:
+      - ./backend/.env.example
     environment:
       - DATABASE_URL=postgresql://persona_user:persona_pass@postgres:5432/persona_builder
       - REDIS_URL=redis://redis:6379
       - ML_SERVICE_URL=http://ml-service:8000
+    command: npm run dev
+    volumes:
+      - ./backend:/app
 
   ml-service:
     build:
