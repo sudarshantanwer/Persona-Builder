@@ -1,0 +1,69 @@
+version: '3.8'
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../infrastructure/docker/Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_URL=http://localhost:4000
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../infrastructure/docker/Dockerfile.backend
+    ports:
+      - "4000:4000"
+    depends_on:
+      - postgres
+      - redis
+    env_file: ./backend/.env.example
+    environment:
+      - DATABASE_URL=postgresql://persona_user:persona_pass@postgres:5432/persona_builder
+      - REDIS_URL=redis://redis:6379
+      - ML_SERVICE_URL=http://ml-service:8000
+
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: ../infrastructure/docker/Dockerfile.ml
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - DATABASE_URL=postgresql://persona_user:persona_pass@postgres:5432/persona_builder
+      - REDIS_URL=redis://redis:6379
+      - AWS_REGION=us-east-1
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: persona_builder_db
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: persona_user
+      POSTGRES_PASSWORD: persona_pass
+      POSTGRES_DB: persona_builder
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - pgdata:/var/lib/postgresql/data/pgdata
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:

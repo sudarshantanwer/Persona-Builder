@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Persona Builder DB",
+      "Group": "Servers",
+      "Host": "host.docker.internal",
+      "Port": 5433,
+      "MaintenanceDB": "persona_builder",
+      "Username": "persona_user",
+      "SSLMode": "prefer"
+    }
+  }
+}

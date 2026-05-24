@@ -1,0 +1,78 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+  ECS_CLUSTER: persona-builder-cluster
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Backend tests
+        working-directory: ./backend
+        run: |
+          npm ci
+          npm run lint
+          npm test
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: ML Service tests
+        working-directory: ./ml-service
+        run: |
+          pip install -r requirements.txt
+          python -m pytest tests/ -v
+
+  build-and-deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push images
+        run: |
+          for svc in frontend backend ml-service; do
+            docker build -t $ECR_REGISTRY/persona-builder-$svc:${{ github.sha }} \
+              -f infrastructure/docker/Dockerfile.${svc//-service/} ./$svc
+            docker push $ECR_REGISTRY/persona-builder-$svc:${{ github.sha }}
+            docker tag $ECR_REGISTRY/persona-builder-$svc:${{ github.sha }} \
+              $ECR_REGISTRY/persona-builder-$svc:latest
+            docker push $ECR_REGISTRY/persona-builder-$svc:latest
+          done
+
+      - name: Deploy to ECS
+        run: |
+          for svc in frontend backend ml-service; do
+            aws ecs update-service \
+              --cluster $ECS_CLUSTER \
+              --service persona-builder-$svc \
+              --force-new-deployment
+          done
